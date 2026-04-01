@@ -1,4 +1,4 @@
-# sitara -- System InformaTion At Runtime
+# sitar -- System InformaTion At Runtime
 
 Sitar prepares system information using system tools, and by reading the /proc file system.
 
