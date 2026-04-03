@@ -87,12 +87,16 @@ type lsblkDevice struct {
 	MountPoint string        `json:"mountpoint"`
 	UUID       string        `json:"uuid"`
 	Label      string        `json:"label"`
-	RO         string        `json:"ro"`
+	RO         bool          `json:"ro"`
 	Children   []lsblkDevice `json:"children"`
 }
 
 func flattenLsblk(dev lsblkDevice, out *[]PartitionRecord) {
 	if dev.Type == "part" || dev.Type == "disk" || dev.Type == "lvm" {
+		ro := "0"
+		if dev.RO {
+			ro = "1"
+		}
 		p := PartitionRecord{
 			Device:     "/dev/" + dev.Name,
 			MajMin:     dev.MajMin,
@@ -102,7 +106,7 @@ func flattenLsblk(dev lsblkDevice, out *[]PartitionRecord) {
 			MountPoint: dev.MountPoint,
 			UUID:       dev.UUID,
 			Label:      dev.Label,
-			RO:         dev.RO,
+			RO:         ro,
 			Source:     "lsblk",
 		}
 		*out = append(*out, p)
