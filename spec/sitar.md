@@ -52,11 +52,11 @@ PackageVersioningBackend := rpm | dpkg | none
 
 ConfigFileSource := hardcoded | consistency-cache | unpacked-cache | include-dir
 // hardcoded:         built-in list of well-known config files
-// consistency-cache: /var/lib/support/Configuration_Consistency.include
+// consistency-cache: /var/lib/support/Configuration_Consistency.json
 //                    produced by: sitar check-consistency
-// unpacked-cache:    /var/lib/support/Find_Unpacked.include
+// unpacked-cache:    /var/lib/support/Find_Unpacked.json
 //                    produced by: sitar find-unpacked
-// include-dir:       any *.include files in /var/lib/support/
+// include-dir:       any *.json files in /var/lib/support/
 //                    (drop-in extension mechanism, PaDS-inherited)
 
 FileSizeLimit := integer where value >= 0
@@ -690,7 +690,7 @@ STEPS:
     a. rpm families (suse, sles, unitedlinux, redhat):
        - collect-chkconfig (if chkconfig executable)
        - collect-config-files (config.allconfigfiles, .allsubdomain,
-         .allsysconfig, .include files in /var/lib/support/)
+         .allsysconfig, .json cache files in /var/lib/support/)
        - collect-installed-rpm; store in manifest.packages,
          manifest.patterns (zypp only)
        - collect-repositories; store in manifest.repositories
@@ -1470,12 +1470,11 @@ STEPS:
    /etc/aliases (if Postfix present)
    If postconf executable: run `postconf -n` and include output verbatim.
 
-4. Process /var/lib/support/*.include files (drop-in extension):
-   Each .include file contains a Perl `@files = (...)` array declaration.
-   Parse the file using the pattern: extract quoted strings between
-   the opening `(` and closing `)`.
-   For each extracted path: include the file using the same rules as step 2.
-   Do NOT execute Perl; use string parsing only.
+4. Process /var/lib/support/*.json files (drop-in extension):
+   Each .json file must contain a JSON array of file paths:
+   `[ "/path/one", "/path/two" ]`
+   Parse with a standard JSON parser. For each path in the array:
+   include the file using the same rules as step 2.
 
 5. If config.allsysconfig active:
    Walk /etc/sysconfig/ recursively; include all regular files whose
@@ -1781,7 +1780,7 @@ Write results to a cache file for use in subsequent runs.
 INPUTS:
 ```
 config_dir:  string   // default: /var/lib/support
-cache_file:  string   // default: Find_Unpacked.include
+cache_file:  string   // default: Find_Unpacked.json
 search_root: string   // default: /etc
 ```
 
@@ -1802,13 +1801,13 @@ STEPS:
    AND readable AND (if ignore_binary=true) not binary/data type
    (detected via `file -p -b`; skip if output matches "Berkeley DB"
    or "data").
-4. Sort result; write to cache_file as Perl array:
-   `@files = ( "/path/a", "/path/b" );`
+4. Sort result; write to cache_file as JSON array:
+   `[ "/path/a", "/path/b" ]`
 5. Create config_dir if it does not exist.
 6. Return cache_path.
 
 POSTCONDITIONS:
-- cache_file is a valid Perl snippet loadable by collect-config-files
+- cache_file is a valid JSON array readable by collect-config-files
 - cache_file is preserved between runs (not overwritten unless
   this BEHAVIOR is explicitly invoked)
 
@@ -1827,7 +1826,7 @@ since installation. Write results to cache for subsequent runs.
 INPUTS:
 ```
 config_dir:  string   // default: /var/lib/support
-cache_file:  string   // default: Configuration_Consistency.include
+cache_file:  string   // default: Configuration_Consistency.json
 ```
 
 OUTPUTS:
@@ -1847,13 +1846,14 @@ STEPS:
    Parse output; collect paths of changed config files
    (those whose path is confirmed in configfiles for this package;
    skip "missing" prefixed lines).
-4. Sort and write cache_file as Perl array:
-   `@files = ( "/path/a", "/path/b" );`
+4. Sort and write cache_file as JSON array:
+   `[ "/path/a", "/path/b" ]`
 5. Create config_dir if it does not exist.
 6. Return cache_path.
 
 POSTCONDITIONS:
 - cache_file is preserved between runs; overwritten only on explicit invocation
+- cache_file is a valid JSON array readable by collect-config-files
 - Content of listed files is included verbatim in subsequent sitar runs
 
 ERRORS:
@@ -2392,8 +2392,8 @@ GIVEN:
 WHEN:
   check-consistency is called
 THEN:
-  /var/lib/support/Configuration_Consistency.include is written
-  file contains valid Perl "@files = (...);" declaration
+  /var/lib/support/Configuration_Consistency.json is written
+  file contains a valid JSON array of file paths
   file is preserved on next run without: sitar check-consistency
   exit_code = 0
 
@@ -2406,8 +2406,9 @@ GIVEN:
 WHEN:
   find-unpacked is called with ignore_binary = true
 THEN:
-  /var/lib/support/Find_Unpacked.include contains "/etc/foo.conf"
-  /etc/foo.conf is NOT present (it is a binary; skipped)
+  /var/lib/support/Find_Unpacked.json is written
+  JSON array contains "/etc/foo.conf"
+  /etc/foo.db is NOT present (it is a binary; skipped)
   exit_code = 0
 
 EXAMPLE: shadow_excluded_by_default
@@ -2571,9 +2572,9 @@ All external tool invocations go through the CommandRunner interface.
 
 Language-specific implementation hints:
 
-  cli-tool.go.milestones.hints.md:
-    hints-file: cli-tool.go.milestones.hints.md
-    // Go scaffold-first patterns applicable to any cli-tool.
+  cli-tool.rs.milestones.hints.md:
+    hints-file: cli-tool.rs.milestones.hints.md
+    // Rust scaffold-first patterns applicable to any cli-tool.
     // Read before writing any code.
 
   sitar.implementation.hints.md:
@@ -2582,6 +2583,7 @@ Language-specific implementation hints:
     // function names, milestone verification commands, known failure modes.
     // Advisory only — a correct M0 is achievable from the spec and generic
     // hints alone. This file improves quality but is not required.
+    // Adapt to other languages accordingly
 
 ---
 
@@ -2614,10 +2616,11 @@ Config file: /etc/sysconfig/sitar
   SITAR_OPT_EXCLUDE, SITAR_OPT_LVMARCHIVE.
 
 Extension mechanism:
-  Drop *.include files into /var/lib/support/ to add config files
-  to the collection. Each file must contain exactly:
-    @files = ( "/path/one", "/path/two" );
-  This is the PaDS-inherited extension point; format unchanged.
+  Drop *.json files into /var/lib/support/ to add config files
+  to the collection. Each file must contain a JSON array of paths:
+    [ "/path/one", "/path/two" ]
+  This is the PaDS-inherited extension point; format changed from
+  Perl array to JSON array in sitar 0.9.0.
 
 JSON output compatibility:
   The JSON output follows the Machinery system description format
@@ -2632,7 +2635,7 @@ Install locations:
   Binary:      /usr/bin/sitar
   Man page:    /usr/share/man/man1/sitar.1
   Config:      /etc/sysconfig/sitar
-  Cache dir:   /var/lib/support/
+  Cache dir:   /var/lib/support/   // JSON cache files written here
   Data dir:    /usr/share/sitar/   // proc.txt and other static data
 
 Packaging:
@@ -2658,7 +2661,7 @@ Minimum tool versions enforced by target floor (SLES 12 SP5 / RHEL 8):
 ## MILESTONE: 0.9.0-M0
 Status: active
 Scaffold: true
-Hints-file: cli-tool.go.milestones.hints.md, sitar.implementation.hints.md
+Hints-file: cli-tool.rs.milestones.hints.md, sitar.implementation.hints.md
 
 // Full scaffold pass. Every source file, every type definition,
 // every function signature, every stub body. No real collection logic.
@@ -2696,7 +2699,7 @@ Acceptance criteria:
 
 ## MILESTONE: 0.9.0-M1
 Status: pending
-Hints-file: cli-tool.go.milestones.hints.md, sitar.implementation.hints.md
+Hints-file: cli-tool.rs.milestones.hints.md, sitar.implementation.hints.md
 
 // Identity pass. Real implementations for config parsing, distribution
 // detection, OS/environment/general-info collection, and JSON rendering.
@@ -2736,7 +2739,7 @@ Acceptance criteria:
 
 ## MILESTONE: 0.9.0-M2
 Status: pending
-Hints-file: cli-tool.go.milestones.hints.md, sitar.implementation.hints.md
+Hints-file: cli-tool.rs.milestones.hints.md, sitar.implementation.hints.md
 
 // Hardware and kernel pass. Real implementations for all /proc-based
 // collection modules.
@@ -2772,7 +2775,7 @@ Acceptance criteria:
 
 ## MILESTONE: 0.9.0-M3
 Status: pending
-Hints-file: cli-tool.go.milestones.hints.md, sitar.implementation.hints.md
+Hints-file: cli-tool.rs.milestones.hints.md, sitar.implementation.hints.md
 
 // Storage pass. Real implementation of collect-storage and collect-btrfs.
 // Uses lsblk -J as primary source with fdisk fallback; findmnt -J for
@@ -2802,7 +2805,7 @@ Acceptance criteria:
 
 ## MILESTONE: 0.9.0-M4
 Status: pending
-Hints-file: cli-tool.go.milestones.hints.md, sitar.implementation.hints.md
+Hints-file: cli-tool.rs.milestones.hints.md, sitar.implementation.hints.md
 
 // Networking pass. Real implementations for network interfaces, routing,
 // and firewall collection using ip -j as primary source.
@@ -2834,7 +2837,7 @@ Acceptance criteria:
 
 ## MILESTONE: 0.9.0-M5
 Status: pending
-Hints-file: cli-tool.go.milestones.hints.md, sitar.implementation.hints.md
+Hints-file: cli-tool.rs.milestones.hints.md, sitar.implementation.hints.md
 
 // Packages and services pass. Real implementations for all package
 // management, repository, service, user, group, and changed-file modules.
@@ -2866,7 +2869,7 @@ Acceptance criteria:
 
 ## MILESTONE: 0.9.0-M6
 Status: pending
-Hints-file: cli-tool.go.milestones.hints.md, sitar.implementation.hints.md
+Hints-file: cli-tool.rs.milestones.hints.md, sitar.implementation.hints.md
 
 // Human renderers pass. Real implementation of render-human with all
 // 30 named render functions and the render BEHAVIOR dispatch logic.
@@ -2903,7 +2906,7 @@ Acceptance criteria:
 
 ## MILESTONE: 0.9.0-M7
 Status: pending
-Hints-file: cli-tool.go.milestones.hints.md, sitar.implementation.hints.md
+Hints-file: cli-tool.rs.milestones.hints.md, sitar.implementation.hints.md
 
 // Config files and cache pass. Real implementations for the slow,
 // optional modules. Also: the collect BEHAVIOR orchestration is
@@ -2924,6 +2927,8 @@ Acceptance criteria:
   html output file size             greater than 50000 bytes
   json output file size             greater than 100000 bytes
   sitar check-consistency           (run as root) exits 0
-  /var/lib/support/Configuration_Consistency.include  exists after above
+  /var/lib/support/Configuration_Consistency.json  exists after above
+  jq -e '. | arrays' /var/lib/support/Configuration_Consistency.json
   sitar find-unpacked               (run as root) exits 0
-  /var/lib/support/Find_Unpacked.include              exists after above
+  /var/lib/support/Find_Unpacked.json              exists after above
+  jq -e '. | arrays' /var/lib/support/Find_Unpacked.json

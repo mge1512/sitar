@@ -153,21 +153,20 @@ before any real collection logic is added.
 
 ---
 
-## .include file parsing — no Perl execution
+## .json cache file parsing — standard JSON parser
 
-collect-config-files reads `/var/lib/support/*.include` files.
-Each file contains a Perl array literal:
+collect-config-files reads `/var/lib/support/*.json` files.
+Each file contains a JSON array of file paths:
 
 ```
-@files = ( "/path/to/file1", "/path/to/file2" );
+[ "/path/to/file1", "/path/to/file2" ]
 ```
 
-Parse this with string or regex operations in the implementation
-language. Do NOT invoke Perl, do NOT use eval or equivalent.
-Extract all double-quoted strings between the outer parentheses.
-
-The pattern: match all occurrences of `"([^"]+)"` in the file content.
-This is sufficient — the format is fixed and simple.
+Parse with a standard JSON parser in the implementation language.
+No special handling required — this is a plain JSON array of strings.
+For each path in the array: apply the same inclusion rules as the
+main config file collection (skip excluded paths, respect size limit,
+etc.).
 
 ---
 
@@ -182,30 +181,24 @@ Previous translators added it as dead code after reading the original
 
 ---
 
-## check-consistency and find-unpacked write Perl-syntax cache files
+## check-consistency and find-unpacked write JSON cache files
 
 These two BEHAVIORs produce output files at:
 
 ```
-/var/lib/support/Configuration_Consistency.include
-/var/lib/support/Find_Unpacked.include
+/var/lib/support/Configuration_Consistency.json
+/var/lib/support/Find_Unpacked.json
 ```
 
-The file format is a Perl array literal (so that legacy tools reading
-`/var/lib/support/*.include` can parse them):
+The file format is a JSON array of file paths:
 
+```json
+[ "/path/a", "/path/b" ]
 ```
-@files = ( "/path/a", "/path/b" );
-```
 
-The implementation writes this string using normal file I/O in the
-implementation language. It does not invoke Perl. The output is plain
-text that happens to be valid Perl syntax.
-
-A previous translation generated actual Perl scripts for these
-BEHAVIORs instead of implementation-language code that writes the
-cache file. The BEHAVIORs are implemented in the target language;
-only their output format is Perl syntax.
+The implementation writes this using standard JSON serialisation in
+the target language. No special handling required — it is a plain
+array of strings serialised to a file.
 
 ---
 
@@ -302,9 +295,11 @@ test $(stat -c%s /tmp/sitar-m6/*.html) -gt 0       && echo "html: non-empty"
 test $(stat -c%s /tmp/sitar-m7/*.html) -gt 50000   && echo "html: size OK"
 test $(stat -c%s /tmp/sitar-m7/*.json) -gt 100000  && echo "json: size OK"
 ./sitar check-consistency
-test -f /var/lib/support/Configuration_Consistency.include && echo "cache: OK"
+test -f /var/lib/support/Configuration_Consistency.json && echo "cache: OK"
+jq -e '. | arrays' /var/lib/support/Configuration_Consistency.json && echo "cache: valid JSON array"
 ./sitar find-unpacked
-test -f /var/lib/support/Find_Unpacked.include             && echo "unpacked: OK"
+test -f /var/lib/support/Find_Unpacked.json             && echo "unpacked: OK"
+jq -e '. | arrays' /var/lib/support/Find_Unpacked.json && echo "unpacked: valid JSON array"
 ```
 
 ---
@@ -332,6 +327,6 @@ runs. All four apply regardless of target language:
    reading sitar.pl. The spec removes yast2. The spec is the authority.
 
 6. **check-consistency and find-unpacked were generated as Perl scripts**
-   rather than implementation-language code that writes a Perl-syntax
-   output file. The BEHAVIORs are in the target language; only their
-   output format is a Perl array literal.
+   rather than implementation-language code that writes a JSON array
+   to a file. The BEHAVIORs are in the target language; their output
+   is a plain JSON array of strings written with standard file I/O.
