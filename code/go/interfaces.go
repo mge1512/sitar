@@ -124,7 +124,8 @@ func (fs *OSFilesystem) Stat(path string) (FileInfo, error) {
 func (fs *OSFilesystem) WalkDir(root string, fn func(path string, isDir bool) error) error {
 	return filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
 		if err != nil {
-			return err
+			// Skip unreadable entries (common in /proc, /sys) rather than aborting.
+			return nil
 		}
 		return fn(path, d.IsDir())
 	})

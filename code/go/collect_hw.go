@@ -369,34 +369,36 @@ func collectProcesses(fs Filesystem) *ScopeWrapper[ProcessRecord] {
 		Elements:   []ProcessRecord{},
 	}
 
+	// Read /proc directly — only look at top-level numeric directories.
+	// Do NOT use WalkDir on /proc: it recurses into /proc/sys, /proc/net,
+	// /proc/tty etc. and never terminates on a live system.
+	entries, err := os.ReadDir("/proc")
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "sitar: collect-processes: ReadDir /proc: %v\n", err)
+		return scope
+	}
+
 	var records []ProcessRecord
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			continue
+		}
+		pid := entry.Name()
+		if _, err := strconv.Atoi(pid); err != nil {
+			continue // skip non-numeric entries (net, sys, tty, etc.)
+		}
 
-	err := fs.WalkDir("/proc", func(path string, isDir bool) error {
-		if !isDir || path == "/proc" {
-			return nil
-		}
-		// Only process top-level /proc/<pid> directories
-		rel := strings.TrimPrefix(path, "/proc/")
-		if strings.Contains(rel, "/") {
-			return filepath.SkipDir
-		}
-		// Check if name is all digits
-		if _, err := strconv.Atoi(rel); err != nil {
-			return nil
-		}
-		pid := rel
-
-		statContent, err := fs.ReadFile(filepath.Join("/proc", pid, "stat"))
+		statContent, err := fs.ReadFile("/proc/" + pid + "/stat")
 		if err != nil {
-			return nil
+			continue // process may have exited
 		}
 
-		// Parse stat: pid (comm) state ppid ...
-		// comm may contain spaces, enclosed in parens
+		// Parse: pid (comm) state ppid ...
+		// comm is enclosed in parens and may contain spaces.
 		openParen := strings.Index(statContent, "(")
 		closeParen := strings.LastIndex(statContent, ")")
 		if openParen < 0 || closeParen < 0 || closeParen <= openParen {
-			return nil
+			continue
 		}
 		comm := statContent[openParen+1 : closeParen]
 		rest := strings.TrimSpace(statContent[closeParen+1:])
@@ -410,7 +412,7 @@ func collectProcesses(fs Filesystem) *ScopeWrapper[ProcessRecord] {
 			ppid = fields[1]
 		}
 
-		cmdlineContent, _ := fs.ReadFile(filepath.Join("/proc", pid, "cmdline"))
+		cmdlineContent, _ := fs.ReadFile("/proc/" + pid + "/cmdline")
 		cmdline := strings.ReplaceAll(cmdlineContent, "\x00", " ")
 		cmdline = strings.TrimRight(cmdline, " \n")
 
@@ -421,10 +423,6 @@ func collectProcesses(fs Filesystem) *ScopeWrapper[ProcessRecord] {
 			State:   state,
 			CmdLine: cmdline,
 		})
-		return nil
-	})
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "sitar: collect-processes: %v\n", err)
 	}
 
 	sort.Slice(records, func(i, j int) bool {
