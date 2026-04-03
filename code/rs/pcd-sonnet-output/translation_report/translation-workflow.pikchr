@@ -1,0 +1,37 @@
+# translation-workflow.pikchr
+# Sitar translation workflow diagram
+# Render with: pikchr translation-workflow.pikchr
+
+box "prepare-config" fit
+arrow
+box "detect-distribution" fit
+arrow
+box "collect" fit
+arrow
+box "render" fit
+arrow
+box "output files" fit
+
+box "collect-general-info" fit at 2cm below collect
+box "collect-environment" fit at 0.5cm below collect-general-info
+box "collect-os" fit at 0.5cm below collect-environment
+box "collect-cpu" fit at 0.5cm below collect-os
+box "collect-kernel-params" fit at 0.5cm below collect-cpu
+box "collect-storage" fit at 0.5cm below collect-kernel-params
+box "collect-network" fit at 0.5cm below collect-storage
+box "collect-packages" fit at 0.5cm below collect-network
+
+arrow from collect down to collect-general-info
+arrow from collect down to collect-environment
+arrow from collect down to collect-os
+arrow from collect down to collect-cpu
+arrow from collect down to collect-kernel-params
+arrow from collect down to collect-storage
+arrow from collect down to collect-network
+arrow from collect down to collect-packages
+
+box "render-human (html/tex/sdocbook/md)" fit at 2cm below render
+box "render-json" fit at 0.5cm below render-human
+
+arrow from render down to render-human
+arrow from render down to render-json

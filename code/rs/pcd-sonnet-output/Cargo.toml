@@ -1,0 +1,22 @@
+[package]
+name    = "sitar"
+version = "0.9.0"
+edition = "2021"
+authors = ["Matthias G. Eckermann <pcd@mailbox.org>"]
+description = "System InformaTion At Runtime — collects hardware, kernel, network, storage, security, and package information from a running Linux system"
+license = "GPL-2.0-or-later"
+
+[[bin]]
+name = "sitar"
+path = "src/main.rs"
+
+[dependencies]
+serde      = { version = "1", features = ["derive"] }
+serde_json = "1"
+flate2     = "1"
+
+[profile.release]
+strip = true
+
+# Static linking: use RUSTFLAGS="-C target-feature=+crt-static" cargo build --release
+# or set in .cargo/config.toml per-project (not here to avoid proc-macro issues)

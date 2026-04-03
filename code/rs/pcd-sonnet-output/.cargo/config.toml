@@ -1,0 +1,4 @@
+# .cargo/config.toml
+# Static linking is set via RUSTFLAGS at build time for release builds.
+# Do not set rustflags here as it breaks proc-macro compilation.
+# Use: RUSTFLAGS="-C target-feature=+crt-static" cargo build --release

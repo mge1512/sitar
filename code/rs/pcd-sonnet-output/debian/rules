@@ -1,0 +1,17 @@
+#!/usr/bin/make -f
+
+%:
+	dh $@
+
+override_dh_auto_build:
+	pandoc sitar.1.md -s -t man -o sitar.1
+	cargo build --release
+
+override_dh_auto_install:
+	install -d debian/sitar/usr/bin
+	install -m 755 target/release/sitar debian/sitar/usr/bin/sitar
+	install -d debian/sitar/usr/share/man/man1
+	install -m 644 sitar.1 debian/sitar/usr/share/man/man1/sitar.1
+	install -d debian/sitar/etc/sysconfig
+	install -m 644 /dev/null debian/sitar/etc/sysconfig/sitar
+	install -d debian/sitar/var/lib/support
