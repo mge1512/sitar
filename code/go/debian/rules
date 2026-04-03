@@ -1,0 +1,15 @@
+#!/usr/bin/make -f
+
+export CGO_ENABLED=0
+export DH_VERBOSE=1
+
+%:
+	dh $@
+
+override_dh_auto_build:
+	go build -ldflags="-s -w" -o sitar .
+	pandoc sitar.1.md -s -t man -o sitar.1
+
+override_dh_auto_install:
+	install -Dm755 sitar debian/sitar/usr/bin/sitar
+	install -Dm644 sitar.1 debian/sitar/usr/share/man/man1/sitar.1

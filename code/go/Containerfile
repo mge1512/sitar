@@ -1,0 +1,15 @@
+FROM registry.suse.com/bci/golang:latest AS builder
+
+WORKDIR /build
+
+COPY go.mod ./
+RUN go mod download
+
+COPY . .
+RUN CGO_ENABLED=0 go build -ldflags="-s -w" -o sitar .
+
+FROM scratch
+
+COPY --from=builder /build/sitar /sitar
+
+ENTRYPOINT ["/sitar"]

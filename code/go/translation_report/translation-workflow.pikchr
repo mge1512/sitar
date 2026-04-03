@@ -1,0 +1,47 @@
+box "sitar Translation Workflow" wid 3 ht 0.5 at (0,0)
+
+# Phase 1: Input Resolution
+box "Read spec + template + hints" wid 2.5 ht 0.4 at (0, -0.8)
+arrow from (0, -0.25) to (0, -0.6)
+
+# Phase 2: Type & File Layout
+box "Resolve types, file layout, interfaces" wid 2.5 ht 0.4 at (0, -1.6)
+arrow from (0, -1.05) to (0, -1.4)
+
+# Phase 3: M0 Scaffold
+box "M0: Write all files (stubs)" wid 2.5 ht 0.4 at (0, -2.4)
+arrow from (0, -1.85) to (0, -2.2)
+
+# Phase 4: Compile Gate
+diamond "Compiles?" wid 1.2 ht 0.6 at (0, -3.2)
+arrow from (0, -2.65) to (0, -2.9)
+
+# Fix loop
+arrow from (0.6, -3.2) right 0.5 then up 0.8 then left 0.5
+box "Fix errors" wid 1.0 ht 0.3 at (1.4, -2.8)
+
+# M1-M7 Milestones
+box "M1: Identity (config, detect, OS, JSON)" wid 2.5 ht 0.4 at (0, -4.2)
+arrow from (0, -3.5) to (0, -4.0)
+
+box "M2: Hardware (/proc collection)" wid 2.5 ht 0.4 at (0, -5.0)
+arrow from (0, -4.45) to (0, -4.8)
+
+box "M3: Storage (lsblk, fdisk, btrfs)" wid 2.5 ht 0.4 at (0, -5.8)
+arrow from (0, -5.25) to (0, -5.6)
+
+box "M4: Network (ip -j, iptables)" wid 2.5 ht 0.4 at (0, -6.6)
+arrow from (0, -6.05) to (0, -6.4)
+
+box "M5: Packages (rpm, dpkg, services)" wid 2.5 ht 0.4 at (0, -7.4)
+arrow from (0, -6.85) to (0, -7.2)
+
+box "M6: Renderers (html, tex, xml, md)" wid 2.5 ht 0.4 at (0, -8.2)
+arrow from (0, -7.65) to (0, -8.0)
+
+box "M7: Config files + cache (complete)" wid 2.5 ht 0.4 at (0, -9.0)
+arrow from (0, -8.45) to (0, -8.8)
+
+# Output
+box "TRANSLATION_REPORT.md" wid 2.5 ht 0.4 at (0, -9.8)
+arrow from (0, -9.25) to (0, -9.6)

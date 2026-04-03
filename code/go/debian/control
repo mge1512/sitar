@@ -1,0 +1,19 @@
+Source: sitar
+Section: admin
+Priority: optional
+Maintainer: Matthias G. Eckermann <pcd@mailbox.org>
+Build-Depends: debhelper-compat (= 13), golang-go (>= 1.21), pandoc
+Standards-Version: 4.6.2
+Homepage: https://build.opensuse.org/package/show/home:mge/sitar
+Rules-Requires-Root: no
+
+Package: sitar
+Architecture: any
+Depends: ${misc:Depends}
+Description: System InformaTion At Runtime
+ sitar collects hardware, kernel, network, storage, security, and package
+ information from a running Linux system and renders it in one or more
+ structured output formats, including a machine-readable JSON format aligned
+ with the Machinery system description schema.
+ .
+ Supported output formats: HTML, LaTeX, Simplified DocBook XML, JSON, Markdown.
