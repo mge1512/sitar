@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"strings"
 	"syscall"
+	"time"
 )
 
 const (
@@ -266,8 +267,9 @@ func main() {
 	// Check-only modes: run the requested checks and exit
 	if config.CheckConsistency || config.FindUnpacked {
 		if !config.All {
-			// Pure check/find run — no full collection needed
-			cr := &OSCommandRunner{}
+			// Pure check/find run — no full collection needed.
+			// Use a long timeout: rpm -V per package can take many minutes.
+			cr := &OSCommandRunner{Timeout: 15 * time.Minute}
 			if config.CheckConsistency {
 				debugLog("running check-consistency")
 				if _, err := checkConsistency(cr); err != nil {

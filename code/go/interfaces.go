@@ -327,18 +327,27 @@ type CommandRunner interface {
 // 5. OSCommandRunner – production implementation
 // ─────────────────────────────────────────────────────────────────────────────
 
-// OSCommandRunner executes real OS commands using os/exec.
-type OSCommandRunner struct{}
+// OSCommandRunner executes real system commands.
+// Timeout controls how long to wait for each command (0 = 30s default).
+type OSCommandRunner struct {
+	Timeout time.Duration
+}
 
 // Run executes cmd with args, capturing stdout and stderr separately.
 // It temporarily restricts PATH to a known-safe set of directories to avoid
 // PATH-injection attacks.
+
 func (r *OSCommandRunner) Run(cmd string, args []string) (string, string, error) {
 	oldPath := os.Getenv("PATH")
 	os.Setenv("PATH", "/sbin:/bin:/usr/bin:/usr/sbin")
 	defer os.Setenv("PATH", oldPath)
 
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	timeout := r.Timeout
+	if timeout == 0 {
+		timeout = 30 * time.Second
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 
 	c := exec.CommandContext(ctx, cmd, args...)

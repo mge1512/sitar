@@ -102,9 +102,12 @@ func collect(config *Config, fs Filesystem, cr CommandRunner) *SitarManifest {
 		manifest.DMI = collectDMI(fs, cr)
 	})
 
+	// Slow RPM operations get a dedicated long-timeout runner (15 min each).
+	slowCR := &OSCommandRunner{Timeout: 15 * time.Minute}
+
 	if config.FindUnpacked {
 		safeRun("find-unpacked", func() {
-			_, err := findUnpacked(cr)
+			_, err := findUnpacked(slowCR)
 			if err != nil {
 				fmt.Fprintf(os.Stderr, "sitar: find-unpacked: %v\n", err)
 			}
@@ -112,7 +115,7 @@ func collect(config *Config, fs Filesystem, cr CommandRunner) *SitarManifest {
 	}
 	if config.CheckConsistency {
 		safeRun("check-consistency", func() {
-			_, err := checkConsistency(cr)
+			_, err := checkConsistency(slowCR)
 			if err != nil {
 				fmt.Fprintf(os.Stderr, "sitar: check-consistency: %v\n", err)
 			}
