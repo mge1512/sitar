@@ -729,6 +729,6 @@ mod tests {
         let cr = FakeCommandRunner::new();
         let scope = collect_storage(&fs, &cr);
         // Should not panic; partitions may be empty when no tools available
-        assert!(scope.partitions.elements.len() >= 0);
+        let _ = scope.partitions.elements.len(); // just verify no panic
     }
 }

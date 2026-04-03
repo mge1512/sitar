@@ -184,7 +184,7 @@ fn prepare_config(config_file: &str, argv: &[String]) -> Config {
 
 fn run_check_consistency_only() {
     // Verify root
-    let uid = unsafe { libc_geteuid() };
+    let uid = libc_geteuid();
     if uid != 0 {
         eprintln!("Please run sitar as user root.");
         std::process::exit(1);
@@ -203,7 +203,7 @@ fn run_check_consistency_only() {
 }
 
 fn run_find_unpacked_only() {
-    let uid = unsafe { libc_geteuid() };
+    let uid = libc_geteuid();
     if uid != 0 {
         eprintln!("Please run sitar as user root.");
         std::process::exit(1);

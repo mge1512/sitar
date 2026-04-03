@@ -29,7 +29,7 @@ pub fn collect(
     cr: &dyn CommandRunner,
 ) -> SitarManifest {
     // Step 1: verify uid=0
-    let uid = unsafe { libc_geteuid() };
+    let uid = libc_geteuid();
     if uid != 0 {
         eprintln!("Please run sitar as user root.");
         std::process::exit(1);
@@ -253,19 +253,18 @@ fn utc_now() -> String {
 pub fn format_utc_timestamp(secs: u64) -> String {
     // Simple UTC formatter — no external dependency
     let s = secs as i64;
-    let (mut year, mut month, mut day, mut hour, mut min, mut sec_r) = (1970i32, 1u32, 1u32, 0u32, 0u32, 0u32);
     let mut rem = s;
     // days since epoch
     let days = rem / 86400;
     rem %= 86400;
-    hour = (rem / 3600) as u32;
+    let hour   = (rem / 3600) as u32;
     rem %= 3600;
-    min = (rem / 60) as u32;
-    sec_r = (rem % 60) as u32;
+    let min    = (rem / 60) as u32;
+    let sec_r  = (rem % 60) as u32;
 
     // Convert days to Y-M-D (Gregorian calendar)
     let mut d = days as i32;
-    year = 1970;
+    let mut year: i32 = 1970;
     loop {
         let leap = is_leap(year);
         let days_in_year = if leap { 366 } else { 365 };
@@ -274,13 +273,13 @@ pub fn format_utc_timestamp(secs: u64) -> String {
         year += 1;
     }
     let months = [31, if is_leap(year) { 29 } else { 28 }, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
-    month = 1;
+    let mut month: u32 = 1;
     for &m in &months {
         if d < m { break; }
         d -= m;
         month += 1;
     }
-    day = (d + 1) as u32;
+    let day = (d + 1) as u32;
 
     format!("{:04}-{:02}-{:02}T{:02}:{:02}:{:02}Z",
         year, month, day, hour, min, sec_r)
