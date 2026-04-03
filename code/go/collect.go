@@ -37,9 +37,12 @@ func collect(config *Config, fs Filesystem, cr CommandRunner) *SitarManifest {
 	distro := detectDistribution(fs)
 
 	safeRun := func(name string, fn func()) {
+		fmt.Fprintf(os.Stderr, "sitar: starting %s\n", name)
 		defer func() {
 			if r := recover(); r != nil {
 				fmt.Fprintf(os.Stderr, "sitar: module %s panicked: %v\n", name, r)
+			} else {
+				fmt.Fprintf(os.Stderr, "sitar: finished %s\n", name)
 			}
 		}()
 		fn()

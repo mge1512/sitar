@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"io"
 	"os"
@@ -9,6 +10,7 @@ import (
 	"path/filepath"
 	"strings"
 	"syscall"
+	"time"
 )
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -51,7 +53,13 @@ type Filesystem interface {
 type OSFilesystem struct{}
 
 // ReadFile reads the entire content of path and returns it as a string.
+// For /proc and /sys pseudo-files it enforces a 2-second timeout so that
+// files that block indefinitely (e.g. /proc/sys/kernel/cad_pid) do not
+// hang the whole collection run.
 func (fs *OSFilesystem) ReadFile(path string) (string, error) {
+	if strings.HasPrefix(path, "/proc/") || strings.HasPrefix(path, "/sys/") {
+		return readFileTimeout(path, 0, 2)
+	}
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return "", err
@@ -60,19 +68,64 @@ func (fs *OSFilesystem) ReadFile(path string) (string, error) {
 }
 
 // ReadFileLimited reads at most limit bytes from path.
+// For /proc and /sys pseudo-files it uses O_NONBLOCK and a 2-second timeout.
 func (fs *OSFilesystem) ReadFileLimited(path string, limit int) (string, error) {
+	if strings.HasPrefix(path, "/proc/") || strings.HasPrefix(path, "/sys/") {
+		return readFileTimeout(path, limit, 2)
+	}
 	f, err := os.Open(path)
 	if err != nil {
 		return "", err
 	}
 	defer f.Close()
-
 	buf := make([]byte, limit)
 	n, err := io.ReadFull(f, buf)
 	if err != nil && err != io.ErrUnexpectedEOF && err != io.EOF {
 		return "", err
 	}
 	return string(buf[:n]), nil
+}
+
+// readFileTimeout reads a file using O_NONBLOCK with a per-read timeout.
+// limit=0 means read all. timeoutSec is the per-read deadline in seconds.
+func readFileTimeout(path string, limit int, timeoutSec int) (string, error) {
+	type result struct {
+		data string
+		err  error
+	}
+	ch := make(chan result, 1)
+	go func() {
+		// Open with O_NONBLOCK so the open itself does not block.
+		f, err := os.OpenFile(path, os.O_RDONLY|syscall.O_NONBLOCK, 0)
+		if err != nil {
+			ch <- result{"", err}
+			return
+		}
+		defer f.Close()
+		var buf []byte
+		if limit > 0 {
+			buf = make([]byte, limit)
+			n, err := io.ReadFull(f, buf)
+			if err != nil && err != io.ErrUnexpectedEOF && err != io.EOF {
+				ch <- result{"", err}
+				return
+			}
+			ch <- result{string(buf[:n]), nil}
+		} else {
+			data, err := io.ReadAll(f)
+			if err != nil {
+				ch <- result{"", err}
+				return
+			}
+			ch <- result{string(data), nil}
+		}
+	}()
+	select {
+	case r := <-ch:
+		return r.data, r.err
+	case <-time.After(time.Duration(timeoutSec) * time.Second):
+		return "", fmt.Errorf("read timeout: %s", path)
+	}
 }
 
 // Glob returns the names of all files matching pattern using filepath.Glob.
@@ -285,7 +338,10 @@ func (r *OSCommandRunner) Run(cmd string, args []string) (string, string, error)
 	os.Setenv("PATH", "/sbin:/bin:/usr/bin:/usr/sbin")
 	defer os.Setenv("PATH", oldPath)
 
-	c := exec.Command(cmd, args...)
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	c := exec.CommandContext(ctx, cmd, args...)
 	var stdout, stderr bytes.Buffer
 	c.Stdout = &stdout
 	c.Stderr = &stderr
