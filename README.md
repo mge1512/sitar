@@ -6,8 +6,8 @@ Output is in JSON, HTML, LaTeX and (docbook) XML, and can be converted to PS and
 
 This program must be run as "root".
 
-This version of sitar is a re-implementation following the PCD-/Piccadilly-approach, see: https://github.com/mge1512/pcd
-Currently this repository contains a successful implementation of the original functionality to GO, next step could be Rust.
+This version of sitar (originally developed in Perl between 1999 and 2006) is a re-implementation following the PCD-/Piccadilly-approach, see: https://github.com/mge1512/pcd
+Currently this repository contains successful translations of the original functionality to GO and Rust.
 
 Comment: Sitar is an ancient Indian instrument as well.
 
