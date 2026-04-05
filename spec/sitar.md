@@ -65,7 +65,9 @@ FileSizeLimit := integer where value >= 0
 
 SITAR_READFILE_LIMIT := 32767
 // Maximum bytes read from a single /proc or /sys pseudo-file in one call.
-// Used by: collect-kernel-params, collect-net-params, collect-security-apparmor.
+// MUST be declared as a named constant in the implementation — not as a
+// magic number inline. Used by: collect-kernel-params, collect-net-params,
+// collect-security-apparmor.
 
 // -----------------------------------------------------------------------
 // JSON output schema types
@@ -618,8 +620,12 @@ STEPS:
    rpm_cmd="/bin/rpm", read first line.
 6. Else check /etc/SuSE-release → family=rpm, backend=rpm,
    rpm_cmd="/bin/rpm", read first line.
-7. Else check /etc/os-release → family=rpm, backend=rpm,
-   rpm_cmd="/usr/bin/rpm", read PRETTY_NAME value as release.
+7. Else check /etc/os-release:
+   Read PRETTY_NAME value as release.
+   If `rpm` is executable: family=rpm, backend=rpm, rpm_cmd="/usr/bin/rpm".
+   Else: family=unknown, backend=none.
+   // This guard prevents false rpm-family detection on systems that have
+   // /etc/os-release but no rpm backend (e.g. minimal containers).
 8. Else: family=unknown, backend=none.
    MECHANISM: emit warning to stderr "distribution not supported".
 9. Return family, release, backend, rpm_cmd, dpkg_status.
@@ -1528,8 +1534,13 @@ STEPS:
    name = NAME, version = VERSION-RELEASE, size = SIZE (integer bytes),
    summary = SUMMARY, distribution = DISTRIBUTION, packager = PACKAGER,
    arch = ARCH.
-4. Retrieve checksum: run `rpm -q --queryformat '%{MD5SUM}\n' <name>`.
-   Store as checksum field.
+4. OPTIONAL: Retrieve checksum per package via
+   `rpm -q --queryformat '%{MD5SUM}\n' <n>`.
+   This step MAY be omitted when the installed package count exceeds 100,
+   as it requires one subprocess invocation per package and is prohibitively
+   slow on large systems.
+   When omitted: checksum MUST be set to "".
+   When performed: store result as checksum field.
 5. For SUSE/SLES: also query installation sources via
    `installation_sources -s` if available; store output as
    supplementary text in manifest (not a distinct JSON scope).
@@ -2287,6 +2298,21 @@ PackageBackend {
                     chkconfig, changed-config-files, kernel config) is
                     gated on DistributionFamily; unknown family silently
                     skips those modules
+- [observable]      Optional scopes absent from collection (scope not found,
+                    tool not executable, or hardware not present) MUST be
+                    omitted from JSON output entirely. They MUST NOT appear
+                    as JSON null. The difference is observable:
+                      Correct:   field absent from JSON object
+                      Incorrect: "scope_name": null
+                    Translators MUST use the appropriate serialisation
+                    annotation for the target language. Examples:
+                      Go:   json:",omitempty" on pointer-typed scope fields
+                      Rust: #[serde(skip_serializing_if = "Option::is_none")]
+                      Java: @JsonInclude(Include.NON_NULL) on scope fields
+                    Applies to: security_apparmor, dmi, storage sub-scopes
+                    (cciss, areca, dac960, gdth, ips, compaq_smart, evms,
+                    multipath), and any other scope conditional on hardware
+                    or tool availability.
 
 ---
 
