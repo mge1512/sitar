@@ -146,7 +146,9 @@ PackageRecord := {
   release:  string    // release string (RPM) or "" (dpkg)
   arch:     string    // e.g. "x86_64", "noarch"
   vendor:   string    // package vendor
-  checksum: string    // MD5 checksum (hex digits; "" if not available)
+  checksum: string    // file digest hex string; "" if not available or skipped.
+                      // Algorithm varies by RPM version: MD5 (rpm < 4.14),
+                      // SHA256 (rpm >= 4.14). See collect-installed-rpm STEP 4.
   // sitar extensions (not in Machinery):
   size:     integer   // installed size in bytes (from %{SIZE} or dpkg Installed-Size)
   summary:  string    // one-line description
@@ -1534,13 +1536,46 @@ STEPS:
    name = NAME, version = VERSION-RELEASE, size = SIZE (integer bytes),
    summary = SUMMARY, distribution = DISTRIBUTION, packager = PACKAGER,
    arch = ARCH.
-4. OPTIONAL: Retrieve checksum per package via
-   `rpm -q --queryformat '%{MD5SUM}\n' <n>`.
+4. OPTIONAL: Retrieve file digest per package.
    This step MAY be omitted when the installed package count exceeds 100,
    as it requires one subprocess invocation per package and is prohibitively
-   slow on large systems.
-   When omitted: checksum MUST be set to "".
-   When performed: store result as checksum field.
+   slow on large systems. When omitted: checksum MUST be set to "".
+
+   When performed, the digest tag and algorithm vary by RPM version:
+
+   a. Query the digest algorithm used by this RPM installation:
+        rpm -q --queryformat "%{FILEDIGESTALGO}" <n>
+      Interpret the result:
+        "" | "(none)" | "1" → algorithm is MD5; use tag FILEMD5S
+        "2"                 → SHA1;   use tag FILEDIGESTS
+        "8"                 → SHA256; use tag FILEDIGESTS  (rpm >= 4.14)
+        "9"                 → SHA384; use tag FILEDIGESTS
+        "10"                → SHA512; use tag FILEDIGESTS
+        any other value     → unknown; use tag FILEDIGESTS
+      On rpm < 4.6 (SLES 11 era), FILEDIGESTALGO is not a valid tag and
+      returns "(none)" — the (none)/empty branch above handles this correctly.
+
+   b. Retrieve the first file digest for the package:
+        rpm -q --queryformat "%{<tag>}" <n>
+      where <tag> is the tag selected in step 4a.
+      FILEMD5S returns empty on rpm >= 4.14 SHA256-built packages —
+      do not rely on it being populated; if empty, set checksum = "".
+
+   c. Store the result as the checksum field.
+      Include the algorithm prefix for unambiguous interpretation:
+        "md5:<hex>"    for MD5 digests
+        "sha256:<hex>" for SHA256 digests
+        ""             when digest is unavailable or step is skipped
+
+   FIPS NOTE: On any FIPS-enabled system (SLES 15+, SLES 16, RHEL 8+,
+   Ubuntu 22.04+ in FIPS mode), MD5 is disabled at the kernel level.
+   RPM operations that touch MD5 digests — including querying FILEMD5S
+   or verifying packages built with MD5 — will fail or return empty.
+   On FIPS-enabled systems, FILEDIGESTALGO will be "8" (SHA256) for all
+   current packages. If FILEDIGESTALGO returns "1" or "" on a FIPS-enabled
+   system, treat it as unavailable and set checksum = "" rather than
+   attempting to query FILEMD5S (which will fail).
+   Detection: /proc/sys/crypto/fips_enabled contains "1" when FIPS is active.
 5. For SUSE/SLES: also query installation sources via
    `installation_sources -s` if available; store output as
    supplementary text in manifest (not a distinct JSON scope).
