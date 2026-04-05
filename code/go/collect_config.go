@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -148,17 +149,19 @@ func collectConfigFiles(fs Filesystem, config *Config, consistencyCacheExists, u
 		}
 	}
 
-	// Process .include files from /var/lib/support/
-	includeFiles, _ := fs.Glob("/var/lib/support/*.include")
-	for _, f := range includeFiles {
+	// Process JSON cache files from /var/lib/support/
+	cacheFiles, _ := fs.Glob("/var/lib/support/*.json")
+	for _, f := range cacheFiles {
 		content, err := fs.ReadFile(f)
 		if err != nil {
 			continue
 		}
-		re := regexp.MustCompile(`"([^"]+)"`)
-		matches := re.FindAllStringSubmatch(content, -1)
-		for _, m := range matches {
-			p := m[1]
+		var paths []string
+		if err := json.Unmarshal([]byte(content), &paths); err != nil {
+			fmt.Fprintf(os.Stderr, "sitar: collectConfigFiles: skipping %s: %v\n", f, err)
+			continue
+		}
+		for _, p := range paths {
 			if !shouldSkipConfigFile(p, config) && fs.Exists(p) {
 				collected = append(collected, p)
 			}
@@ -269,7 +272,7 @@ func getConfigFileCandidates() []string {
 // findUnpacked finds files below /etc that do not belong to any installed RPM.
 func findUnpacked(cr CommandRunner) (string, error) {
 	configDir := "/var/lib/support"
-	cacheFile := filepath.Join(configDir, "Find_Unpacked.include")
+	cacheFile := filepath.Join(configDir, "Find_Unpacked.json")
 
 	// Get all files owned by RPMs under /etc
 	stdout, _, err := cr.Run("rpm", []string{"-qla"})
@@ -308,19 +311,15 @@ func findUnpacked(cr CommandRunner) (string, error) {
 
 	sort.Strings(unpackedFiles)
 
-	// Write Perl array format
 	if err := os.MkdirAll(configDir, 0755); err != nil {
 		return "", fmt.Errorf("mkdir %s: %w", configDir, err)
 	}
 
-	var sb strings.Builder
-	sb.WriteString("@files = (\n")
-	for _, f := range unpackedFiles {
-		sb.WriteString(fmt.Sprintf("  %q,\n", f))
+	data, err := json.MarshalIndent(unpackedFiles, "", "  ")
+	if err != nil {
+		return "", fmt.Errorf("marshal %s: %w", cacheFile, err)
 	}
-	sb.WriteString(");\n")
-
-	if err := os.WriteFile(cacheFile, []byte(sb.String()), 0644); err != nil {
+	if err := os.WriteFile(cacheFile, data, 0644); err != nil {
 		return "", fmt.Errorf("write %s: %w", cacheFile, err)
 	}
 
@@ -330,7 +329,7 @@ func findUnpacked(cr CommandRunner) (string, error) {
 // checkConsistency checks that RPM config files have not been modified since installation.
 func checkConsistency(cr CommandRunner) (string, error) {
 	configDir := "/var/lib/support"
-	cacheFile := filepath.Join(configDir, "Configuration_Consistency.include")
+	cacheFile := filepath.Join(configDir, "Configuration_Consistency.json")
 
 	// Get all config files with package names
 	stdout, _, err := cr.Run("rpm", []string{"-qca", "--queryformat", "%{NAME}\n"})
@@ -370,14 +369,11 @@ func checkConsistency(cr CommandRunner) (string, error) {
 		return "", fmt.Errorf("mkdir %s: %w", configDir, err)
 	}
 
-	var sb strings.Builder
-	sb.WriteString("@files = (\n")
-	for _, f := range changedFiles {
-		sb.WriteString(fmt.Sprintf("  %q,\n", f))
+	data, err := json.MarshalIndent(changedFiles, "", "  ")
+	if err != nil {
+		return "", fmt.Errorf("marshal %s: %w", cacheFile, err)
 	}
-	sb.WriteString(");\n")
-
-	if err := os.WriteFile(cacheFile, []byte(sb.String()), 0644); err != nil {
+	if err := os.WriteFile(cacheFile, data, 0644); err != nil {
 		return "", fmt.Errorf("write %s: %w", cacheFile, err)
 	}
 
