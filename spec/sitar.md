@@ -9,7 +9,7 @@ description schema.
 ## META
 
 Deployment:   cli-tool
-Version:      0.9.0
+Version:      0.12.0
 Spec-Schema:  0.3.20
 Author:       Matthias G. Eckermann <pcd@mailbox.org>
 License:      GPL-2.0-or-later
