@@ -1,134 +1,249 @@
-I am providing two files:
+# PCD Translation Prompt
 
-1. cli-tool.template.md — a deployment template that defines
-   the conventions, constraints, and defaults for this type of component
-   under the Post-Coding Development.
+## Environment
 
-2. sitar.md — a specification for a component, written in the
-   Post-Coding Development format.
+Input directory:  [YourInputDir]
+Output directory: [YourOutputDir]
 
-Additional files may be present if listed in the spec's DEPENDENCIES section
-(hints files, interface definitions). Read them before generating any code.
+You have a bash tool. Use it for all file operations and build verification.
+Do NOT print file contents to the terminal as a substitute for writing them to disk.
+
+File writing pattern — use this for every source file:
+```bash
+cat > [YourOutputDir]filename.ext << 'EOF'
+... file content ...
+EOF
+```
+
+After writing each file, confirm it exists and is non-empty:
+```bash
+ls -la [YourOutputDir]/filename.ext
+```
+
+Do NOT write prompt.md, system_prompt.md, or any input file to the output directory.
 
 ---
 
-## Universal principles
+## CRITICAL REQUIREMENTS
 
-**Derive the target language from the deployment template.**
-The template declares the default language and valid alternatives.
-Use the default unless a project preset overrides it.
-If you deviate from the default, state why explicitly in the translation report.
+Read these before reading anything else. They override any conflicting
+instruction in any other file.
 
-**Read the template's `## EXECUTION` section and follow it exactly.**
-The EXECUTION section specifies the delivery phases, their order, resume
-logic, and compile/build verification steps for this deployment type.
-Do not invent a different phase order. Do not skip phases.
+1. **Read ALL hints files before writing any code.**
+   The active MILESTONE in the spec has a `Hints-file:` field listing one or
+   more hints files. Read every one of them from the input directory before
+   producing a single line of code. They contain known failure modes from
+   previous translation runs. Ignoring them guarantees repeating those failures.
 
-**Read deliverables from the template, not from this prompt.**
-Produce all deliverables for every OUTPUT-FORMAT marked `required` in the
-TEMPLATE-TABLE. Produce `supported` deliverables only if active in the
-resolved preset. Do not enumerate files yourself — read the DELIVERABLES
-table in the template.
+2. **The production CommandRunner implementation MUST use the platform
+   subprocess API.** It must actually execute system commands and capture
+   their output. A stub that returns ("", "", nil) or equivalent for all
+   inputs is not acceptable — it will cause every collection module to
+   silently produce empty output while the build appears to succeed.
 
-**Apply TYPE-BINDINGS mechanically.**
-If the template contains a `## TYPE-BINDINGS` section, every logical type
-named in the spec maps to the concrete language type given in the table for
-the resolved LANGUAGE. Do not substitute your own type judgement.
+3. **render_human MUST contain exactly 30 separate typed functions**, one
+   per row in the SECTION-MAP table in the spec. Do NOT write a single
+   generic dispatcher function. A dispatcher that covers only some types
+   silently drops all others — this was the failure mode in previous runs.
 
-**Apply GENERATED-FILE-BINDINGS mechanically.**
-If the template contains a `## GENERATED-FILE-BINDINGS` section, use the
-filenames given there for generated infrastructure files (CRDs, manifests,
-rbac, etc.). Do not invent filenames not listed there.
+4. **All scope fields MUST be initialised to empty-but-valid objects, never
+   null.** A null reference serialises to JSON `null`. An empty initialised
+   scope serialises to `{"_attributes":{},"_elements":[]}`. Only the latter
+   is schema-compatible. The hints file gives concrete examples for the
+   target language.
 
-**Follow STEPS in every BEHAVIOR block.**
-Implement each STEPS entry in the order written. Do not reorder or skip steps.
-Implement MECHANISM: annotations exactly where specified — they are normative,
-not advisory.
+5. **The active MILESTONE has `Scaffold: true`.** This means your only
+   objective is a complete, compilable skeleton. Do not implement real
+   collection or rendering logic. Stubs only. The compile gate is the
+   sole acceptance criterion.
 
-**Respect the Constraint: field on every BEHAVIOR header.**
-- `required` (default): implement unconditionally.
-- `supported`: implement only if the resolved preset activates it.
-- `forbidden`: never implement. Do not generate code for forbidden behaviors.
+---
 
-**Implement all INTERFACES declarations.**
+## Input files
+
+The following files are in [YourInputDir]:
+
+1. `cli-tool.template.md` — deployment template: conventions, constraints,
+   delivery phases, compile gate, and deliverables table for this component type.
+
+2. `sitar.md` — the component specification in PCD format.
+
+3. Additional hints files named in the spec's active MILESTONE `Hints-file:`
+   field. Read them before writing any code.
+
+---
+
+## Step 1 — Read before writing
+
+Before producing any output, read these files in this order:
+
+1. This prompt (you are reading it now)
+2. `sitar.md` — find the active MILESTONE, note the `Hints-file:` field
+3. Every hints file listed in `Hints-file:` — read them completely
+4. `cli-tool.template.md` — read the EXECUTION section and DELIVERABLES table
+
+Only after reading all four items may you begin writing files.
+
+---
+
+## Step 2 — Resolve target language
+
+Read the TEMPLATE-TABLE in `cli-tool.template.md`. Find the LANGUAGE row.
+The default language is stated there. Use it unless the spec's META section
+declares a `Language:` override.
+
+State the resolved language in the translation report. All subsequent
+decisions (file extensions, build commands, dependency format, type
+conventions) follow from this single resolved value.
+
+---
+
+## Step 3 — Active MILESTONE governs translation scope
+
+Find the `## MILESTONE:` section in the spec with `Status: active`.
+Exactly one milestone may be active. If zero or more than one are active,
+halt and report the error.
+
+**If `Scaffold: true` (current state):**
+
+Your objective is a complete compilable skeleton of the ENTIRE component.
+Read the full spec to understand all types, interfaces, and function
+signatures. Then:
+
+- Create all source files the completed implementation will ever need
+- Define all types, structs, enums, and interfaces from the spec TYPES
+  and INTERFACES sections
+- Write a stub body for every function declared by every BEHAVIOR in the spec
+- Every stub: correct signature, correct zero-value return, silent at
+  normal verbosity (no "not implemented" messages during normal runs)
+- Do NOT implement any real collection or rendering logic
+- The compile gate is the only acceptance criterion
+
+After this pass, all subsequent milestone translators replace stub bodies
+only. They never create new files or new types.
+
+**If `Scaffold: false` (future milestones):**
+
+- Implement only BEHAVIORs listed under `Included BEHAVIORs:`
+- Leave all `Deferred BEHAVIORs:` stubs exactly as they are
+- Do not modify any other file or function body
+
+---
+
+## Step 4 — Stub contract
+
+Every stub function must:
+
+1. Have the **correct signature** — parameters and return types matching
+   what the caller declared in the spec INTERFACES or BEHAVIOR blocks
+2. Return the **correct zero value** for its output type:
+   - Collection functions returning a scope object: return an initialised
+     empty scope with empty attributes map and empty elements list —
+     NEVER a null/nil/None reference
+   - Functions returning a string: return empty string ""
+   - Functions returning (string, error) or equivalent: return ("", nil)
+   - Functions returning bool: return false
+3. Be **silent at normal verbosity** — no output to stderr unless a
+   debug environment variable is set (see hints file for the variable name)
+4. **Compile cleanly** — no unused imports, no type errors
+
+The hints file for the target language gives concrete code examples of
+correct stub bodies.
+
+---
+
+## Step 5 — INTERFACES section
+
 If the spec contains an `## INTERFACES` section, produce every declared
-implementation: production and all test doubles. Independent tests must
-use only declared test doubles — never the production implementation.
+implementation:
 
-**Map COMPONENT entries to filenames via the template.**
-If the spec contains a DELIVERABLES section with COMPONENT: entries, map
-each COMPONENT to the concrete filenames defined in the template's
-DELIVERABLES table. Do not invent filenames not listed there.
+- All production implementations (OSFilesystem, OSCommandRunner, all
+  Renderer variants, all PackageBackend variants)
+- All test doubles (FakeFilesystem, FakeCommandRunner, FakeRenderer,
+  FakePackageBackend)
 
-**Do not fabricate dependency versions.**
-If hints files are present, use the verified versions they specify.
-If no hints file is present and no stable release exists for a dependency,
-flag it in the translation report and leave the version for the maintainer
-to verify. Never invent commit hashes or pseudo-version timestamps.
-
-**LICENSE files.**
-Follow the deployment template's LICENSE deliverable requirements exactly.
-If the template does not specify LICENSE content, include the license name
-and a reference URL to the authoritative text rather than inventing custom text.
-
-**Do not make language or toolchain decisions based on your environment.**
-The deployment template describes the target runtime, not the environment
-where this prompt is evaluated.
-
-**Do not ask clarifying questions.**
-If the specification is ambiguous, make the most conservative interpretation,
-implement it, and document the ambiguity in the translation report.
+The production CommandRunner is NOT a stub. See CRITICAL REQUIREMENT 2.
+All Renderer production implementations are stubs in M0 but must be present.
 
 ---
 
-## Delivery modes
+## Step 6 — Deliverables
 
-Deliver the implementation as follows, depending on your environment:
+Read the DELIVERABLES table in `cli-tool.template.md`. Produce every file
+marked `required`. Note which files are `supported` (only if preset activates
+them) and which are `forbidden`.
 
-1. **Filesystem or MCP server available:** write source files directly.
-   Commit or push if possible, and report the location.
+Do not invent filenames. Map every deliverable to the concrete filename given
+in the template's naming convention using `<n>` = `sitar`.
 
-2. **Code execution but no persistent storage:** write files within your
-   execution environment and present them as downloadable artifacts.
-
-3. **Browser sandbox or no filesystem access:** deliver complete source
-   code inline, as clearly separated files with explicit filenames.
-
-Do not invent a delivery mechanism not listed above.
+Write files in the delivery order specified in the template EXECUTION section.
+After writing each file, verify it with `ls -la`.
 
 ---
 
-## Translation report
+## Step 7 — Compile gate
 
-Produce a `TRANSLATION_REPORT.md` covering:
+After all source files are written, run the compile gate appropriate for
+the resolved language. For the template default language:
 
-- Target language resolved, and whether any preset overrides the template default
-- Delivery mode used and why
-- How STEPS ordering was applied for each BEHAVIOR block
-- Which INTERFACES test doubles were produced (if INTERFACES section present)
-- How TYPE-BINDINGS were applied (if present in template)
-- How GENERATED-FILE-BINDINGS were applied (if present in template)
-- Which BEHAVIOR blocks had Constraint: supported or forbidden, and how
-  that affected code generation
-- Which COMPONENT entries from spec DELIVERABLES mapped to which filenames
-- Specification ambiguities encountered
-- Rules that could not be implemented exactly as written, and why
-- Compile gate result (see template EXECUTION section)
-- Per-example confidence as a table:
+```bash
+cd /tmp/pcd-ollama-output
+<build command from template EXECUTION section>
+```
+
+If compilation fails:
+- Read the error output carefully
+- Fix only the file(s) containing the reported errors
+- Do not rewrite unaffected files
+- Re-run the build
+- Repeat until the build passes or all reasonable fixes are exhausted
+
+Record pass/fail in the translation report.
+
+Do NOT skip the compile gate. Do NOT claim it passed without running it.
+If your environment cannot run the build tool, state this explicitly in
+the translation report under "Compile gate not executed" and explain why.
+
+---
+
+## Step 8 — Translation report
+
+Write `TRANSLATION_REPORT.md` LAST, after all other files are written and
+the compile gate has passed.
+
+The report must cover:
+
+- Target language resolved and how (template default, spec override, or preset)
+- Hints files read (list each filename and confirm it was read before coding)
+- Active MILESTONE: name, Scaffold value, Included BEHAVIORs, Deferred BEHAVIORs
+- Stub functions produced: count and list
+- Compile gate result: pass or fail, with exact command run
+- Deviations from the spec: any BEHAVIOR not implemented exactly as written,
+  with reason
+- Specification ambiguities: any ambiguous instruction, and the conservative
+  interpretation chosen
+- Per-example confidence table:
 
   | EXAMPLE | Confidence | Verification method | Unverified claims |
 
-  Confidence definitions:
-  - **High** = a named test function in `independent_tests/` passes without
-    any live external service
-  - **Medium** = some paths tested; other paths require live services or
-    are untested
-  - **Low** = no test function covers this; reasoning or code review only
+  Confidence levels:
+  - High   = verified by a named test that passes without a live system
+  - Medium = partially tested; some paths require a live system
+  - Low    = code review only; not testable without a live privileged system
 
-  A claim is verified only if it references a specific named test function
-  that passes without a live external service. Unverified claims must be
-  listed explicitly — never silently omitted.
+  For M0: most examples will be Low confidence. This is correct and expected.
+  Do not inflate confidence. An honest Low is more useful than a false High.
 
-Write `TRANSLATION_REPORT.md` last, after all other deliverables are
-complete and the compile gate has passed (or has been explicitly
-documented as not executed — see template EXECUTION section).
+---
+
+## What NOT to do
+
+- Do NOT output file contents to the terminal instead of writing them to disk
+- Do NOT skip the compile gate or claim it passed without running it
+- Do NOT stub OSCommandRunner.Run to return empty strings for all inputs
+- Do NOT write a single generic render dispatcher instead of 30 typed functions
+- Do NOT initialise scope fields to null/nil/None
+- Do NOT implement format=yast2 (it is removed from the spec)
+- Do NOT ask clarifying questions — make the conservative interpretation,
+  implement it, and note the ambiguity in the translation report
+- Do NOT write prompt.md or any input file to the output directory
