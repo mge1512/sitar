@@ -1305,28 +1305,41 @@ STEPS:
 1. Locate AppArmor kernel interface:
    Search paths (in order): /proc/sys/kernel/security/apparmor,
    /sys/kernel/security/apparmor.
-   If neither found: skip this module entirely (return null).
-2. Walk the found kernel path; collect all readable files.
-   For each file: read content (up to SITAR_READFILE_LIMIT bytes).
-   Skip empty content.
+   If neither path exists: skip this module entirely (return null).
+2. Verify the located path is readable without blocking:
+   Attempt a read of the kernel interface directory with a short timeout
+   (recommended: 2 seconds). If the read blocks or times out, skip this
+   module entirely and log to stderr:
+   "apparmor: kernel interface not ready, skipping".
+   RATIONALE: Files under /sys/kernel/security/apparmor/ can block
+   indefinitely if the AppArmor kernel subsystem is not fully initialised.
+   This has been observed in practice: a bare `cat` of the `revision`
+   file hangs until AppArmor is started. Existence of the path is not
+   sufficient — readability without blocking must be verified.
+3. Walk the found kernel path; collect all readable files.
+   For each file: read content (up to SITAR_READFILE_LIMIT bytes)
+   with a per-file timeout (recommended: 2 seconds).
+   Skip empty content. Skip files that time out (log to stderr at debug
+   verbosity only).
    Record key = path relative to kernel interface base, value = content.
    Special case: if key = "profiles":
    Parse value: split on ")" to extract per-profile name(enforce|complain) pairs.
    Emit ApparmorProfileRecord per pair.
    Other keys → emit ApparmorKernelRecord.
-3. If AppArmor config log readable:
+4. If AppArmor config log readable:
    Include its path in config_files list.
-4. Include all files in /etc/apparmor/ and /etc/apparmor.d/
+5. Include all files in /etc/apparmor/ and /etc/apparmor.d/
    (or /etc/subdomain/ and /etc/subdomain.d/) as config_files.
-5. If config.allsubdomain = "On", OR
+6. If config.allsubdomain = "On", OR
    config.allsubdomain = "Auto" AND neither consistency nor unpacked
    cache file exists:
    Scan all files in the profile directories (above); add paths to
    config_files list.
-6. Return SecurityApparmorScope.
+7. Return SecurityApparmorScope.
 
 ERRORS:
-- Unreadable kernel path file → skip that file
+- Unreadable kernel path file → skip that file, log at debug verbosity
+- Blocking read on kernel interface → skip module entirely, log to stderr
 
 ---
 
@@ -2333,6 +2346,15 @@ PackageBackend {
                     chkconfig, changed-config-files, kernel config) is
                     gated on DistributionFamily; unknown family silently
                     skips those modules
+- [implementation]  Reads from /sys/kernel/security/ and
+                    /proc/sys/kernel/security/ MUST use a timeout or
+                    non-blocking mechanism. These pseudo-files can block
+                    indefinitely if the kernel subsystem is not fully
+                    initialised. A blocking read with no timeout will hang
+                    the entire sitar process. Observed in practice on
+                    systems where AppArmor is present but not yet started:
+                    reading /sys/kernel/security/apparmor/revision blocks
+                    until the AppArmor service is started.
 - [observable]      Optional scopes absent from collection (scope not found,
                     tool not executable, or hardware not present) MUST be
                     omitted from JSON output entirely. They MUST NOT appear
