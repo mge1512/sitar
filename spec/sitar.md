@@ -1785,21 +1785,62 @@ INPUTS: command_runner
 OUTPUTS: ChangedConfigFilesScope
 
 STEPS:
-1. Run `rpm -qca --queryformat '%{NAME}\n'` to get the list of all RPM
-   config files with their owning package names.
-2. For each unique package: run `rpm -V --nodeps --noscript <pkg>`.
-   Parse output lines (format: SM5DLUGTP  c <path>):
-   Extract change flags (S=size, M=mode, 5=md5, D=device, L=link,
-   U=user, G=group, T=mtime, P=capabilities) and file path.
-3. For each changed config file: run `stat` on the file to retrieve
-   mode, user, group, type.
-4. Emit ChangedConfigFileRecord{name, package_name, package_version,
-   status="changed", changes=[], mode, user, group, type}.
-   changes[] values: "size", "mode", "md5", "device_number", "link_path",
-   "user", "group", "time", "capabilities", "replaced", "deleted".
-5. On rpm -V read error for a specific file: emit
-   ChangedConfigFileRecord{status="error", error_message=<message>}.
-6. Return ChangedConfigFilesScope with _attributes.extracted = false.
+1. Run `rpm -qca --queryformat '%{NAME}\n'` to get the owning package
+   name for every RPM config file. This prints one package name per
+   config file entry (with duplicates). Deduplicate into a package set.
+   Filter junk lines before deduplication — skip any line that:
+     - is empty or whitespace-only
+     - starts with "(" (e.g. "(contains no files) is not installed")
+     - starts with "error:" or "warning:"
+   These junk lines are normal RPM output when packages have no config
+   files; they are not package names and must not be used as such.
+
+2. For each unique package name in the set:
+   Run `rpm -V --nodeps --noscript <pkg>`.
+   rpm -V exits non-zero when it finds differences — this is expected
+   and normal. Parse the output regardless of exit code.
+   A non-zero exit code alone is NOT a package-level error.
+   Only treat it as an error if stdout is also empty AND stderr is
+   non-empty (indicating rpm itself failed, not that files differ).
+
+   Parse each output line (format: SM5DLUGTP  c <path> or
+   "missing    c <path>" for missing files):
+   a. Locate the file-type flag column: the character preceded and
+      followed by a single space between the flags and the path.
+   b. If file-type flag != 'c': skip (not a config file).
+   c. Extract path: everything after the file-type flag and space.
+   d. Extract change flags from the flags field (columns 0-8):
+      S=size, M=mode, 5=md5, D=device_number, L=link_path,
+      U=user, G=group, T=time, P=capabilities.
+      A dot '.' or '?' in a flag position means no change for that
+      attribute — skip it.
+   e. If the line starts with "missing": add "deleted" to changes[].
+
+3. For each changed config file path: run `stat` on the file to
+   retrieve mode (octal), user (name), group (name), type (file/dir/
+   link/etc). If stat fails (file missing): leave fields as "".
+
+4. Retrieve package_version for the owning package:
+   Run `rpm -q --queryformat '%{VERSION}-%{RELEASE}\n' <pkg>`.
+   Use result as package_version; "" if query fails.
+
+5. Emit ChangedConfigFileRecord{
+     name, package_name, package_version,
+     status="changed", changes[], mode, user, group, type
+   }.
+
+6. On rpm -V failure for a package (stdout empty AND stderr non-empty):
+   Emit ChangedConfigFileRecord{
+     name="", package_name=<pkg>, status="error",
+     error_message=<stderr content>
+   }.
+   Do NOT emit an error record merely because rpm -V exited non-zero.
+
+7. Return ChangedConfigFilesScope with _attributes.extracted = false.
+
+POSTCONDITIONS:
+- No record has package_name starting with "(" 
+- status is always "changed" or "error"; never empty
 
 ERRORS:
 - rpm not available → return null, log to stderr
